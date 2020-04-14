@@ -21,13 +21,12 @@ void printTokens(instruction *instr_ptr);
 void clearInstruction(instruction *instr_ptr);
 void performInstruction(instruction *instr_ptr);
 void addNull(instruction *instr_ptr);
-void exitShell();
 void info(instruction *instr_ptr);
 void size(instruction *instr_ptr);
 void ls(instruction *instr_ptr);
 void cd(instruction *instr_ptr);
-void creat(instruction *instr_ptr);
-void mkdir(instruction *instr_ptr);
+void creatFile(instruction *instr_ptr);
+void mkDirectory(instruction *instr_ptr);
 void mv(instruction *instr_ptr);
 void openFile(instruction *instr_ptr);
 void closeFile(instruction *instr_ptr);
@@ -165,6 +164,7 @@ void performInstruction(instruction *instr_ptr)
         if (strcmp(instr_ptr->tokens[0], "exit") == 0)
         {
             //Exit the app
+            exit(0);
         }
         else if (strcmp(instr_ptr->tokens[0], "info") == 0)
         {
