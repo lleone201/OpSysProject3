@@ -21,6 +21,20 @@ void printTokens(instruction *instr_ptr);
 void clearInstruction(instruction *instr_ptr);
 void performInstruction(instruction *instr_ptr);
 void addNull(instruction *instr_ptr);
+void exitShell();
+void info(instruction *instr_ptr);
+void size(instruction *instr_ptr);
+void ls(instruction *instr_ptr);
+void cd(instruction *instr_ptr);
+void creat(instruction *instr_ptr);
+void mkdir(instruction *instr_ptr);
+void mv(instruction *instr_ptr);
+void openFile(instruction *instr_ptr);
+void closeFile(instruction *instr_ptr);
+void readFile(instruction *instr_ptr);
+void writeFile(instruction *instr_ptr);
+void rm(instruction *instr_ptr);
+void cp(instruction *instr_ptr);
 
 int main()
 {
@@ -150,6 +164,51 @@ void performInstruction(instruction *instr_ptr)
     {
         if (strcmp(instr_ptr->tokens[0], "exit") == 0)
         {
+            //Exit the app
+        }
+        else if (strcmp(instr_ptr->tokens[0], "info") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "ls") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "size") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "cd") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "creat") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "mkdir") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "mv") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "open") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "close") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "read") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "write") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "rm") == 0)
+        {
+        }
+        else if (strcmp(instr_ptr->tokens[0], "cp") == 0)
+        {
+        }
+        else
+        {
+            //Print error because that command does not exist
+            printf("%s: Instruction is not recognized\n", instr_ptr->tokens[0]);
         }
     }
 }
