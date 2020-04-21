@@ -49,7 +49,7 @@ FILE *read_fat;
 struct DirEntry
 {
     char Dir_Name[12];
-    uint endCluster;
+    //int endCluster;
     uint8_t Dir_Attr;
     uint32_t Dir_FileSize;
     uint16_t Dir_FirstClusterLow;
@@ -723,7 +723,7 @@ void closeFile(instruction *instr_ptr)
             {
                 opened_file_array[i] = opened_file_array[i + 1];
             }
-            printf("File %s closed\n", instr_ptr->tokens[1]);
+            //printf("File %s closed\n", instr_ptr->tokens[1]);
             curr_open_files--;
             return;
         }
