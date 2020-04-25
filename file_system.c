@@ -1,3 +1,4 @@
+//Written by Logan Leone and Aaron Cohen
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -10,7 +11,6 @@
 #include <signal.h>
 #include <stdint.h>
 #include <ctype.h>
-//32 for file 16 for directory
 
 #define MAX 1000000
 // vars for getting instructions
@@ -83,6 +83,7 @@ void readFile(instruction *instr_ptr);
 void writeFile(instruction *instr_ptr);
 void rm(instruction *instr_ptr);
 void cp(instruction *instr_ptr);
+int BlocktoAddress(int32_t sector);
 
 void toUpperWSpaces(char *directory_name);
 int16_t nextSector(int16_t sector);
@@ -240,6 +241,7 @@ void performInstruction(instruction *instr_ptr)
         }
         else if (strcmp(instr_ptr->tokens[0], "mkdir") == 0)
         {
+            mkDirectory(instr_ptr, DIR);
         }
         else if (strcmp(instr_ptr->tokens[0], "mv") == 0)
         {
@@ -254,15 +256,19 @@ void performInstruction(instruction *instr_ptr)
         }
         else if (strcmp(instr_ptr->tokens[0], "read") == 0)
         {
+            readFile(instr_ptr);
         }
         else if (strcmp(instr_ptr->tokens[0], "write") == 0)
         {
+            writeFile(instr_ptr);
         }
         else if (strcmp(instr_ptr->tokens[0], "rm") == 0)
         {
+            rm(instr_ptr);
         }
         else if (strcmp(instr_ptr->tokens[0], "cp") == 0)
         {
+            cp(instr_ptr);
         }
         else if (strcmp(instr_ptr->tokens[0], "print") == 0)
         {
@@ -403,7 +409,7 @@ void ls(instruction *instr_ptr, struct DirEntry *dir)
         {
             for (i = 0; i < 16; i++)
             {
-                if (tempdir[i].Dir_Attr == 32 || tempdir[i].Dir_Attr == 16 || tempdir[i].Dir_Attr == 2 || tempdir[i].Dir_Attr == 1)
+                if (tempdir[i].Dir_Attr == 32 || tempdir[i].Dir_Attr == 16 || tempdir[i].Dir_Attr == 2 || tempdir[i].Dir_Attr == 1 || tempdir[i].Dir_Attr == 0)
                 {
                     printf("%s\n", tempdir[i].Dir_Name);
                 }
@@ -462,7 +468,8 @@ void ls(instruction *instr_ptr, struct DirEntry *dir)
                 {
                     for (i = 0; i < 16; i++)
                     {
-                        if (tempdir[i].Dir_Attr == 32 || tempdir[i].Dir_Attr == 16 || tempdir[i].Dir_Attr == 2 || tempdir[i].Dir_Attr == 1)
+                        if (tempdir[i].Dir_Attr == 32 || tempdir[i].Dir_Attr == 16 || tempdir[i].Dir_Attr == 2 || tempdir[i].Dir_Attr == 1 || tempdir[i].Dir_Attr == 0)
+
                         {
                             printf("%s\n", tempdir[i].Dir_Name);
                         }
@@ -492,7 +499,6 @@ void cd(instruction *instr_ptr, struct DirEntry *dir)
     struct DirEntry prevdir[16];
     bool found = false;
     int16_t sector;
-    char *tokens; //To split the arguments into
     bool breakLoop = false;
 
     //Check to make sure the command is being used correctly
@@ -518,7 +524,7 @@ void cd(instruction *instr_ptr, struct DirEntry *dir)
         return;
     }
 
-    strcpy(tempname, tokens);
+    strcpy(tempname, instr_ptr->tokens[1]);
     toUpperWSpaces(tempname);
     populate_directory(tempAddr, tempdir);
     found = false;
@@ -693,7 +699,6 @@ void closeFile(instruction *instr_ptr)
     //Check to see if the file is open so that it can be closed
     for (count = 0; count < curr_open_files; count++)
     {
-        printf("temp: %s|\nname: %s|\n", tempname, opened_file_array[count].file_name);
         if (strcmp(tempname, opened_file_array[count].file_name) == 0)
         {
 
@@ -720,6 +725,7 @@ void closeFile(instruction *instr_ptr)
         }
         else
         {
+            //Remove the file from the open table, effectively closing it
             int i;
             for (i = count - 1; i < curr_open_files - 1; i++)
             {
@@ -736,12 +742,13 @@ void closeFile(instruction *instr_ptr)
 void creatFile(instruction *instr_ptr, struct DirEntry *dir)
 {
     //Starting with the same code that I used for size because I looped through the directory to do that.
-    char tempname[15];                    //token to hold the directory name
+    char tempname[15];                    //this will be used to hold the name of the directory after changing it's form
     int32_t tempAddr = CurrentDirCluster; //this will be used to hold the location of the directory we are in
-    struct DirEntry tempdir[16];          //this will be used to hold the location of the directory we are in
-    bool found = false;
-    bool breakLoop = false;
-    int16_t sector;
+    struct DirEntry tempdir[16];          //this will be used to hold the contents of the directory we are in
+    bool found = false;                   //boolean for when we find the file
+    bool breakLoop = false;               //boolean to know when we have hit the end of the directory and can break out
+    int16_t sector;                       //this will hold the value of the next sector to go to
+    //These are the variables that will be written to create the file
     char Dir_Name[12];
     char attr[1];
     char size[4];
@@ -757,8 +764,10 @@ void creatFile(instruction *instr_ptr, struct DirEntry *dir)
         return;
     }
 
+    //Changes the directory/filename to fat32 format
     strcpy(tempname, instr_ptr->tokens[1]);
     toUpperWSpaces(tempname);
+
     populate_directory(tempAddr, tempdir);
     found = false;
     int i;
@@ -766,14 +775,16 @@ void creatFile(instruction *instr_ptr, struct DirEntry *dir)
     {
         for (i = 0; i < 16; i++)
         {
-            if (strcmp(tempdir[i].Dir_Name, tempname) == 0)
+            if (strcmp(tempdir[i].Dir_Name, tempname) == 0 && tempdir[i].Dir_Attr == 32)
             {
+                //If file name is found in directory print that it already exists
                 printf("That file already exists\n");
                 return;
             }
 
             if (strcmp(tempdir[i].Dir_Name, "") == 0)
             {
+                //Takes the ending address of the directory for later
                 breakLoop = true;
                 sector = tempdir[i].Dir_FirstClusterLow;
                 tempAddr = (BPB_BytesPerSec * BPB_RsvdSecCnt) + ((tempdir[i].Dir_FirstClusterLow - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_NumFATs * BPB_FATSz32);
@@ -785,17 +796,20 @@ void creatFile(instruction *instr_ptr, struct DirEntry *dir)
         //If the file has been found, don't go to the next sector before exiting this loop
         if (found == true)
         {
+            //If end of fule is found we can take that address and stop searching.
             break;
         }
+
         //Get address of the next sector and populate the temp directory with that so I can loop through that until I get to the end of the cluster
         sector = nextSector(sector);
         tempAddr = (BPB_BytesPerSec * BPB_RsvdSecCnt) + ((sector - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_NumFATs * BPB_FATSz32);
         populate_directory(tempAddr, tempdir);
     } while (found == false && breakLoop == false);
+
     //Sector should point to open spot. so we create the new file there
     if (found == true)
     {
-        printf("Got to writing section.\n");
+        //Set all variables and write them to the end of the directory
         myunused[0] = tempdir[0].unused[0];
         myunused[1] = tempdir[0].unused[1];
         myunused[2] = tempdir[0].unused[2];
@@ -826,9 +840,450 @@ void creatFile(instruction *instr_ptr, struct DirEntry *dir)
     }
 }
 
+//************************************************************< mkDirectory >************************************************************************************
+void mkDirectory(instruction *instr_ptr, struct DirEntry *dir)
+{
+    //Starting with the same code that I used for size because I looped through the directory to do that.
+    char tempname[15];                    //this will be used to hold the name of the directory after changing it's form
+    int32_t tempAddr = CurrentDirCluster; //this will be used to hold the location of the directory we are in
+    struct DirEntry tempdir[16];          //this will be used to hold the contents of the directory we are in
+    bool found = false;                   //boolean for when we find the file
+    bool breakLoop = false;               //boolean to know when we have hit the end of the directory and can break out
+    int16_t sector;                       //this will hold the value of the next sector to go to
+    //These are the variables that will be written to create the file
+    char Dir_Name[12];
+    char attr[1];
+    char size[4];
+    char FirstClusterLow[2];
+    char FirstClusterHigh[2];
+    uint8_t myunused[8];
+    uint8_t myunused2[4];
+
+    //Argument checking
+    if (instr_ptr->tokens[1] == NULL)
+    {
+        printf("Usage: mkdir <dirname>\n");
+        return;
+    }
+
+    //Changes the directory/filename to fat32 format
+    strcpy(tempname, instr_ptr->tokens[1]);
+    toUpperWSpaces(tempname);
+
+    populate_directory(tempAddr, tempdir);
+    found = false;
+    int i;
+    do
+    {
+        for (i = 0; i < 16; i++)
+        {
+            if (strcmp(tempdir[i].Dir_Name, tempname) == 0 && tempdir[i].Dir_Attr == 16)
+            {
+                //If file name is found in directory print that it already exists
+                printf("That directory already exists\n");
+                return;
+            }
+
+            if (strcmp(tempdir[i].Dir_Name, "") == 0)
+            {
+                //Takes the ending address of the directory for later
+                breakLoop = true;
+                sector = tempdir[i].Dir_FirstClusterLow;
+                tempAddr = (BPB_BytesPerSec * BPB_RsvdSecCnt) + ((tempdir[i].Dir_FirstClusterLow - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_NumFATs * BPB_FATSz32);
+                populate_directory(tempAddr, tempdir);
+                found = true;
+                break;
+            }
+        }
+        //If the file has been found, don't go to the next sector before exiting this loop
+        if (found == true)
+        {
+            //If end of fule is found we can take that address and stop searching.
+            break;
+        }
+
+        //Get address of the next sector and populate the temp directory with that so I can loop through that until I get to the end of the cluster
+        sector = nextSector(sector);
+        tempAddr = (BPB_BytesPerSec * BPB_RsvdSecCnt) + ((sector - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_NumFATs * BPB_FATSz32);
+        populate_directory(tempAddr, tempdir);
+    } while (found == false && breakLoop == false);
+
+    //Sector should point to open spot. so we create the new file there
+    if (found == true)
+    {
+        //Set all variables and write them to the end of the directory
+        myunused[0] = tempdir[0].unused[0];
+        myunused[1] = tempdir[0].unused[1];
+        myunused[2] = tempdir[0].unused[2];
+        myunused[3] = tempdir[0].unused[3];
+        myunused[4] = tempdir[0].unused[4];
+        myunused[5] = tempdir[0].unused[5];
+        myunused[6] = tempdir[0].unused[6];
+        myunused[7] = tempdir[0].unused[7];
+        myunused2[0] = tempdir[0].unused2[0];
+        myunused2[1] = tempdir[0].unused2[1];
+        myunused2[2] = tempdir[0].unused2[2];
+        myunused2[3] = tempdir[0].unused2[3];
+        snprintf(size, sizeof(size), "%d", 0);
+        snprintf(attr, sizeof(attr), "%d", 16);
+        snprintf(FirstClusterHigh, sizeof(FirstClusterHigh), "%d", tempdir[0].Dir_FirstClusterHigh);
+        snprintf(FirstClusterLow, sizeof(FirstClusterLow), "%d", tempdir[0].Dir_FirstClusterLow);
+
+        fseek(fat_file, tempAddr, SEEK_SET);
+        fwrite(tempname, 1, 11, fat_file);
+        fwrite(attr, 1, 1, fat_file);
+        fwrite(myunused, 1, 8, fat_file);
+        fwrite(FirstClusterHigh, 2, 1, fat_file);
+        fwrite(myunused2, 1, 4, fat_file);
+        fwrite(FirstClusterLow, 2, 1, fat_file);
+        fwrite(size, 4, 1, fat_file);
+        printf("Directory: %s created\n", tempname);
+        return;
+    }
+}
+
+//********************************************************************<readFile>****************************************************************************************
+void readFile(instruction *instr_ptr)
+{
+    //printf("%s %s\n", opened_file_array[0].file_name, opened_file_array[0].mode);
+    char instr[15];
+    strcpy(instr, instr_ptr->tokens[1]);
+    toUpperWSpaces(instr);
+    char tempname[15];
+    //printf("%d\n", curr_open_files);
+    int file;
+    bool found = false;
+    bool open = false;
+    //check to see if the filesystem has been mounted
+    if (opened_file == false)
+    {
+        printf("There is no filesystem open.\n");
+        return;
+    }
+    //Check the current opened files for the file name
+    //printf("%d\n", instr_ptr->numTokens);
+
+    if (instr_ptr->numTokens == 5)
+    {
+        for (count = 0; count < curr_open_files; count++)
+        {
+            if (strcmp(instr, opened_file_array[count].file_name) == 0)
+            {
+                //If the file is found then check for the open type
+                printf("File found\n");
+                if (strcmp(opened_file_array[count].mode, "r") == 0 || strcmp(opened_file_array[count].mode, "rw") == 0 || strcmp(opened_file_array[count].mode, "wr") == 0)
+                {
+                    printf("Is opened\n");
+                    open = true;
+                }
+                found = true;
+            }
+        }
+
+        if (found == false)
+        {
+            //if it can't be found print error and return
+            printf("Cannot find that file in the directory\n");
+            return;
+        }
+        else if (open == false)
+        {
+            printf("File is not opened\n");
+            return;
+        }
+    }
+    else
+    {
+        printf("Usage: read <filename> <offset> <size>\n");
+        return;
+    }
+
+    for (count = 0; count < 16; count++)
+    {
+        if (strcmp(instr, DIR[count].Dir_Name) == 0)
+            file = count;
+    }
+
+    char buffer[513];
+    int32_t tempCluster = CurrentDirCluster;
+    int16_t Block;
+    int32_t size;
+    int data = atoi(instr_ptr->tokens[3]);
+    int blockOffset = atoi(instr_ptr->tokens[2]) / 512;
+    int byteOffset = atoi(instr_ptr->tokens[2]) % 512;
+    int max;
+
+    Block = DIR[file].Dir_FirstClusterLow;
+    size = DIR[file].Dir_FileSize;
+
+    if (size < (data + atoi(instr_ptr->tokens[2])))
+    {
+        printf("File is smaller than offset\n");
+        return;
+    }
+    for (count = 0; count < blockOffset; count++)
+    {
+        Block = nextSector(Block);
+    }
+
+    tempCluster = BlocktoAddress(Block);
+    fseek(fat_file, (tempCluster + byteOffset), SEEK_SET);
+
+    while (1)
+    {
+        if (data < 512)
+            max = data;
+        else
+            max = 512;
+
+        fread(buffer, 1, 512, fat_file);
+        buffer[max] = 0;
+
+        for (count = 0; count < max; count++)
+        {
+            printf("%x ", buffer[count]);
+        }
+
+        data -= max;
+        if (data == 0)
+        {
+            printf("\n");
+            return;
+        }
+
+        Block = nextSector(Block);
+        tempCluster = BlocktoAddress(Block);
+
+        fseek(fat_file, tempCluster, SEEK_SET);
+    }
+}
+
+//************************************************************************************************< writeFile >****************************************************************
+void writeFile(instruction *instr_ptr)
+{
+    char instr[15];
+    char write[30];
+    strcpy(instr, instr_ptr->tokens[1]);
+    toUpperWSpaces(instr);
+    char tempname[15];
+    int file;
+    bool found = false;
+    bool open = false;
+    //check to see if the filesystem has been mounted
+    if (opened_file == false)
+    {
+        printf("There is no filesystem open.\n");
+        return;
+    }
+    strcpy(write, instr_ptr->tokens[4]);
+    //Check the current opened files for the file name
+    for (count = 5; count < (instr_ptr->numTokens - 1); count++)
+    {
+        strcat(write, " ");
+        strcat(write, instr_ptr->tokens[count]);
+    }
+
+    if (instr_ptr->numTokens >= 5)
+    {
+        for (count = 0; count < curr_open_files; count++)
+        {
+            if (strcmp(instr, opened_file_array[count].file_name) == 0)
+            {
+                if (strcmp(opened_file_array[count].mode, "w") == 0 || strcmp(opened_file_array[count].mode, "rw") == 0 || strcmp(opened_file_array[count].mode, "wr") == 0)
+                {
+                    open = true;
+                }
+                found = true;
+            }
+        }
+
+        if (found == false)
+        {
+            printf("Cannot find that file in the directory\n");
+            return;
+        }
+        else if (open == false)
+        {
+            printf("File is not opened\n");
+            return;
+        }
+    }
+    else
+    {
+        printf("Usage: write <filename> <offset> <size> <string>\n");
+        return;
+    }
+
+    for (count = 0; count < 16; count++)
+    {
+        if (strcmp(instr, DIR[count].Dir_Name) == 0)
+            file = count;
+    }
+    char buffer[513];
+    int32_t tempCluster = CurrentDirCluster;
+    int16_t Block;
+    int32_t size;
+    int data = atoi(instr_ptr->tokens[3]);
+    int blockOffset = atoi(instr_ptr->tokens[2]) / 512;
+    int byteOffset = atoi(instr_ptr->tokens[2]) % 512;
+    int max;
+
+    Block = DIR[file].Dir_FirstClusterLow;
+    size = DIR[file].Dir_FileSize;
+
+    if (size < (data + atoi(instr_ptr->tokens[2])))
+    {
+        printf("File is smaller than offset\n");
+        return;
+    }
+    for (count = 0; count < blockOffset; count++)
+    {
+        Block = nextSector(Block);
+    }
+
+    tempCluster = BlocktoAddress(Block);
+    fseek(fat_file, (tempCluster + byteOffset), SEEK_SET);
+
+    while (1)
+    {
+        if (data < 512)
+            max = data;
+        else
+            max = 512;
+
+        fwrite(write, 1, sizeof(write), fat_file);
+
+        data -= max;
+        if (data == 0)
+        {
+            return;
+        }
+
+        Block = nextSector(Block);
+        tempCluster = BlocktoAddress(Block);
+
+        fseek(fat_file, tempCluster, SEEK_SET);
+    }
+}
+
+//************************************************************************************************< rm >****************************************************************
+void rm(instruction *instr_ptr)
+{
+    int rmIndex = -1;
+    toUpperWSpaces(instr_ptr->tokens[1]);
+    if (instr_ptr->numTokens != 3)
+    {
+        printf("Usage: rm <filename>\n");
+        return;
+    }
+    for (count = 0; count < 16; count++)
+    {
+        if (strcmp(instr_ptr->tokens[1], DIR[count].Dir_Name) == 0)
+        {
+            rmIndex = count;
+        }
+    }
+    if (rmIndex == -1)
+    {
+        printf("File %s not found\n", instr_ptr->tokens[1]);
+        return;
+    }
+    int max;
+    char write[512];
+    memset(write, '\0', sizeof(write));
+    int32_t fileSize = DIR[rmIndex].Dir_FileSize;
+    int16_t Block = DIR[rmIndex].Dir_FirstClusterLow;
+    int32_t tempCluster;
+
+    tempCluster = BlocktoAddress(Block);
+    fseek(fat_file, tempCluster, SEEK_SET);
+    while (1)
+    {
+        if (fileSize < 512)
+            max = fileSize;
+        else
+            max = 512;
+        fwrite(write, 1, 512, fat_file);
+        fileSize -= max;
+        if (fileSize == 0)
+        {
+            return;
+        }
+        Block = nextSector(Block);
+        tempCluster = BlocktoAddress(Block);
+    }
+    struct DirEntry clear;
+    strcpy(DIR[rmIndex].Dir_Name, "");
+    DIR[rmIndex].Dir_Attr = clear.Dir_Attr;
+    DIR[rmIndex].Dir_FileSize = clear.Dir_FileSize;
+    DIR[rmIndex].Dir_FirstClusterLow = clear.Dir_FirstClusterLow;
+    DIR[rmIndex].Dir_FirstClusterHigh = clear.Dir_FirstClusterHigh;
+    fclose(fat_file);
+    mount_image("aaronfat32.img");
+}
+
+//************************************************************************************************< cp >****************************************************************
+void cp(instruction *instr_ptr)
+{
+    if (instr_ptr->numTokens != 4)
+    {
+        printf("Usage: cp <file> <destination>\n");
+        return;
+    }
+    char tempname[15];
+    bool found = false;
+    int file = 0;
+    int dirn = 0;
+    strcpy(tempname, instr_ptr->tokens[1]);
+    for (count = 0; count < 16; count++)
+    {
+        if (strcmp(tempname, DIR[count].Dir_Name) == 0)
+        {
+            found = true;
+            file = count;
+        }
+    }
+    if (!found)
+    {
+        printf("File %s not found\n", tempname);
+        return;
+    }
+
+    char buffer[1024];
+    int32_t tempCluster = CurrentDirCluster;
+    int16_t Block;
+    int32_t size;
+    int max = 512;
+
+    Block = DIR[file].Dir_FirstClusterLow;
+    size = DIR[file].Dir_FileSize;
+
+    tempCluster = BlocktoAddress(Block);
+    fseek(fat_file, (tempCluster), SEEK_SET);
+
+    while (1)
+    {
+        fread(buffer, 1, 512, fat_file);
+        buffer[max] = 0;
+
+        size -= max;
+        if (size == 0)
+        {
+            printf("\n");
+            return;
+        }
+
+        Block = nextSector(Block);
+        tempCluster = BlocktoAddress(Block);
+
+        fseek(fat_file, tempCluster, SEEK_SET);
+    }
+}
+
 //************************************************************< printOpenTable >************************************************************************************
 void printOpenTable()
 {
+    //Function to print out the names of files in the open table
     printf("Curr open files = %d\n", curr_open_files);
 
     int i;
@@ -865,4 +1320,15 @@ int16_t nextSector(int16_t sector)
     fseek(fat_file, FATAddr, SEEK_SET);
     fread(&val, 2, 1, fat_file);
     return val;
+}
+
+//********************************************************************< BlocktoAddress***************************************************************************
+int BlocktoAddress(int32_t sector)
+{
+    if (!sector)
+    {
+        return RootDirCluster;
+    }
+
+    return (BPB_BytesPerSec * BPB_RsvdSecCnt) + ((sector - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_NumFATs * BPB_FATSz32);
 }
