@@ -97,7 +97,7 @@ int main()
     instr.tokens = NULL;
     instr.numTokens = 0;
     bool cont = true;
-    mount_image("fat32.img");
+    mount_image("aaronfat32.img");
     do
     {
         printf("$ ");
@@ -279,8 +279,7 @@ void performInstruction(instruction *instr_ptr)
 //**************************************************************< mount_image >************************************************************************************
 void mount_image(char *file)
 {
-    fat_file = fopen(file, "r");
-
+    fat_file = fopen(file, "r+");
     if (fat_file != NULL)
     {
         printf("Opened file: %s\n", file);
@@ -391,6 +390,7 @@ void ls(instruction *instr_ptr, struct DirEntry *dir)
     struct DirEntry tempdir[16];          //this will be used to hold the location of the directory we are in
     bool found = false;
     int16_t sector;
+    bool breakLoop = false;
     char *tokens; //To split the arguments into
     //Print out current directory contents
     if (instr_ptr->tokens[1] == NULL || strcmp(instr_ptr->tokens[1], ".") == 0)
@@ -399,27 +399,26 @@ void ls(instruction *instr_ptr, struct DirEntry *dir)
         populate_directory(tempAddr, tempdir);
         sector = tempdir[0].Dir_FirstClusterLow;
         int i;
-        for (i = 0; i < 1000; i++)
+        do
         {
-            for (count = 0; count < 16; count++)
+            for (i = 0; i < 16; i++)
             {
-                //printf("")
-                if (tempdir[count].Dir_Attr == 32 || tempdir[count].Dir_Attr == 16 || tempdir[count].Dir_Attr == 2 || tempdir[count].Dir_Attr == 1)
+                if (tempdir[i].Dir_Attr == 32 || tempdir[i].Dir_Attr == 16 || tempdir[i].Dir_Attr == 2 || tempdir[i].Dir_Attr == 1)
                 {
-                    printf("%s\n", tempdir[count].Dir_Name);
-                    if (tempdir[count].Dir_Name[0] == 0x0 || tempdir[count].Dir_Name[0] == 0x00 || tempdir[count].Dir_Name[0] == 0xE5 || tempdir[count].Dir_Name[0] == 0)
-                    {
-                        printf("End of Cluster\n");
-                        return;
-                    }
+                    printf("%s\n", tempdir[i].Dir_Name);
+                }
+                if (strcmp(tempdir[i].Dir_Name, "") == 0)
+                {
+                    breakLoop = true;
+                    break;
                 }
             }
-            //printf("Changing sector");
+
+            //Get address of the next sector and populate the temp directory with that so I can loop through that until I get to the end of the cluster
             sector = nextSector(sector);
             tempAddr = (BPB_BytesPerSec * BPB_RsvdSecCnt) + ((sector - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_NumFATs * BPB_FATSz32);
             populate_directory(tempAddr, tempdir);
-        }
-        return;
+        } while (breakLoop == false);
     }
     else if (instr_ptr->tokens[1] != NULL)
     {
@@ -458,27 +457,27 @@ void ls(instruction *instr_ptr, struct DirEntry *dir)
             //Once we get to the end of the directory path, list the contents of the directory.
             if (tokens == NULL)
             {
-                printf(".\n");
                 int i;
-                for (i = 0; i < 1000; i++)
+                do
                 {
-                    for (count = 0; count < 16; count++)
+                    for (i = 0; i < 16; i++)
                     {
-                        if (dir[count].Dir_Attr == 32 || dir[count].Dir_Attr == 16 || dir[count].Dir_Attr == 2 || dir[count].Dir_Attr == 1)
+                        if (tempdir[i].Dir_Attr == 32 || tempdir[i].Dir_Attr == 16 || tempdir[i].Dir_Attr == 2 || tempdir[i].Dir_Attr == 1)
                         {
-                            printf("%s\n", tempdir[count].Dir_Name);
-                            if (tempdir[count].Dir_Name == NULL)
-                            {
-                                printf("END OF CLUSTER\n");
-                                return;
-                            }
+                            printf("%s\n", tempdir[i].Dir_Name);
+                        }
+                        if (strcmp(tempdir[i].Dir_Name, "") == 0)
+                        {
+                            breakLoop = true;
+                            break;
                         }
                     }
+
                     //Get address of the next sector and populate the temp directory with that so I can loop through that until I get to the end of the cluster
                     sector = nextSector(sector);
                     tempAddr = (BPB_BytesPerSec * BPB_RsvdSecCnt) + ((sector - 2) * BPB_BytesPerSec) + (BPB_BytesPerSec * BPB_NumFATs * BPB_FATSz32);
                     populate_directory(tempAddr, tempdir);
-                }
+                } while (breakLoop == false);
             }
         }
     }
@@ -487,9 +486,10 @@ void ls(instruction *instr_ptr, struct DirEntry *dir)
 //*********************************************************************< cd >************************************************************************************
 void cd(instruction *instr_ptr, struct DirEntry *dir)
 {
-    char tempname[15];                    //token to hold the directory name
-    int32_t tempAddr = CurrentDirCluster; //this will be used to hold the location of the directory we are in
-    struct DirEntry tempdir[16];          //this will be used to hold the location of the directory we are in
+    char tempname[15]; //token to hold the directory name
+    int32_t tempAddr = CurrentDirCluster;
+    struct DirEntry tempdir[16]; //this will be used to hold the location of the directory we are in
+    struct DirEntry prevdir[16];
     bool found = false;
     int16_t sector;
     char *tokens; //To split the arguments into
@@ -517,7 +517,6 @@ void cd(instruction *instr_ptr, struct DirEntry *dir)
         //cd to the current directory, so do nothing
         return;
     }
-    tokens = strtok(instr_ptr->tokens[1], "/");
 
     strcpy(tempname, tokens);
     toUpperWSpaces(tempname);
@@ -546,6 +545,7 @@ void cd(instruction *instr_ptr, struct DirEntry *dir)
             if (strcmp(tempdir[i].Dir_Name, "") == 0)
             {
                 breakLoop = true;
+                break;
             }
         }
         //If the file has been found, don't go to the next sector before exiting this loop
@@ -642,6 +642,8 @@ void openFile(instruction *instr_ptr, struct DirEntry *dir)
             if (strcmp(tempdir[i].Dir_Name, "") == 0)
             {
                 breakLoop = true;
+                printf("BREAKLOOP\n");
+                break;
             }
         }
         //If the file has been found, don't go to the next sector before exiting this loop
@@ -741,10 +743,10 @@ void creatFile(instruction *instr_ptr, struct DirEntry *dir)
     bool breakLoop = false;
     int16_t sector;
     char Dir_Name[12];
-    uint8_t attr;
-    uint32_t size;
-    uint16_t FirstClusterLow;
-    uint16_t FirstClusterHigh;
+    char attr[1];
+    char size[4];
+    char FirstClusterLow[2];
+    char FirstClusterHigh[2];
     uint8_t myunused[8];
     uint8_t myunused2[4];
 
@@ -767,6 +769,7 @@ void creatFile(instruction *instr_ptr, struct DirEntry *dir)
             if (strcmp(tempdir[i].Dir_Name, tempname) == 0)
             {
                 printf("That file already exists\n");
+                return;
             }
 
             if (strcmp(tempdir[i].Dir_Name, "") == 0)
@@ -792,38 +795,32 @@ void creatFile(instruction *instr_ptr, struct DirEntry *dir)
     //Sector should point to open spot. so we create the new file there
     if (found == true)
     {
-        // printf("Got to writing section.\n");
-        // fat_file = fopen("fat32.img", "w");
-        // printf("Opened image\n");
-        // myunused[0] = tempdir[0].unused[0];
-        // myunused[1] = tempdir[0].unused[1];
-        // myunused[2] = tempdir[0].unused[2];
-        // myunused[3] = tempdir[0].unused[3];
-        // myunused[4] = tempdir[0].unused[4];
-        // myunused[5] = tempdir[0].unused[5];
-        // myunused[6] = tempdir[0].unused[6];
-        // myunused[7] = tempdir[0].unused[7];
-        // myunused2[0] = tempdir[0].unused2[0];
-        // myunused2[1] = tempdir[0].unused2[1];
-        // myunused2[2] = tempdir[0].unused2[2];
-        // myunused2[3] = tempdir[0].unused2[3];
-        // printf("Unused done\n");
-        // size = 0;
-        // attr = 32;
-        // printf("Size and attribute set\n");
-        // FirstClusterHigh = tempdir[0].Dir_FirstClusterHigh;
-        // FirstClusterLow = tempdir[0].Dir_FirstClusterLow;
-        // printf("Clusters set\n");
-        // fseek(fat_file, tempAddr, SEEK_SET);
-        // printf("Seek\n");
-        // fwrite(tempname, 1, 11, fat_file);
-        // printf("First write\n");
-        // fwrite(attr, 1, 1, fat_file);
-        // fwrite(myunused, 1, 8, fat_file);
-        // fwrite(FirstClusterHigh, 2, 1, fat_file);
-        // fwrite(myunused2, 1, 4, fat_file);
-        // fwrite(FirstClusterLow, 2, 1, fat_file);
-        // fwrite(size, 4, 1, fat_file);
+        printf("Got to writing section.\n");
+        myunused[0] = tempdir[0].unused[0];
+        myunused[1] = tempdir[0].unused[1];
+        myunused[2] = tempdir[0].unused[2];
+        myunused[3] = tempdir[0].unused[3];
+        myunused[4] = tempdir[0].unused[4];
+        myunused[5] = tempdir[0].unused[5];
+        myunused[6] = tempdir[0].unused[6];
+        myunused[7] = tempdir[0].unused[7];
+        myunused2[0] = tempdir[0].unused2[0];
+        myunused2[1] = tempdir[0].unused2[1];
+        myunused2[2] = tempdir[0].unused2[2];
+        myunused2[3] = tempdir[0].unused2[3];
+        snprintf(size, sizeof(size), "%d", 0);
+        snprintf(attr, sizeof(attr), "%d", 32);
+        snprintf(FirstClusterHigh, sizeof(FirstClusterHigh), "%d", tempdir[0].Dir_FirstClusterHigh);
+        snprintf(FirstClusterLow, sizeof(FirstClusterLow), "%d", tempdir[0].Dir_FirstClusterLow);
+
+        fseek(fat_file, tempAddr, SEEK_SET);
+        fwrite(tempname, 1, 11, fat_file);
+        fwrite(attr, 1, 1, fat_file);
+        fwrite(myunused, 1, 8, fat_file);
+        fwrite(FirstClusterHigh, 2, 1, fat_file);
+        fwrite(myunused2, 1, 4, fat_file);
+        fwrite(FirstClusterLow, 2, 1, fat_file);
+        fwrite(size, 4, 1, fat_file);
         printf("File: %s created\n", tempname);
         return;
     }
